@@ -4,8 +4,12 @@
 
 In this tutorial we will develop a parser for a very simple expression
 language, and start learning about the set of combinators which comes
-with Parsec.
+with Parsec. 
 
+```
+ghci> :l VerySimpleExpressions.lhs
+```
+ 
 > import Text.Parsec (ParseError)
 > import Text.Parsec.String (Parser)
 > import Text.Parsec.String.Parsec (try)
@@ -205,9 +209,9 @@ and b are numbers.
 
 > add :: Parser SingleAdd
 > add = do
->     e0 <- many1 digit
->     void $ char '+'
->     e1 <- many1 digit
+>     e0 <- lexeme $ many1 digit
+>     void $ lexeme $ char '+'
+>     e1 <- lexeme $ many1 digit
 >     return (SingleAdd (read e0) (read e1))
 
 It has the same whitespace issues as the parens parser.
@@ -301,6 +305,15 @@ code with many calls to `whitespace`.
 >         p
 
 
+```
+*Main> parseWithWhitespace parens " (1)"
+Right (Parentheses 1)
+
+*Main> parseWithWhitespace parens " ( 1)"
+Left (line 1, column 3):
+unexpected " "
+```
+
 Here is the parens parser rewritten to use lexeme:
 
 > parensL :: Parser Parentheses
@@ -354,9 +367,10 @@ It's so simple that it is almost useless at the moment.
 >     [("a", Var "a")
 >     ,("1", Num 1)
 >     ,("2 + 3", Add (Num 2) (Num 3))
->     ,("(42)", Parens (Num 42))]
-
-TODO: some more complex examples
+>     ,("(42)", Parens (Num 42))
+>     ,("1+a", Add (Num 1) (Var "a"))
+>     ,("1 + 2 + (3)", Add (Add (Num 1) (Num 2)) (Parens (Num 3)))
+>     ,("(x+(y+1)+(a+4)", Add (Add (Var "x") (Parens (Add (Var "y") (Num 1)))) (Parens (Add (Var "a") (Num 4))))]
 
 Here are all our component parsers with `lexeme`, and with the
 `SimpleExpr` constructors:
