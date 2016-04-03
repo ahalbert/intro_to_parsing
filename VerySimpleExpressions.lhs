@@ -25,12 +25,9 @@ ghci> :l VerySimpleExpressions.lhs
 The first element we will have in this expression language is positive
 integral numbers:
 
-> numberExamples :: [(String,Integer)]
-> numberExamples = [("1", 1)
->                  ,("23", 23)]
-
-TODO: make examples with parsing failures for all of the example
-scripts below?
+> numberExamples :: [(String, Either ParseError Integer)]
+> numberExamples = [("1", Right 1)
+>                  ,("23", Right 23)]
 
 To parse a number, we need to parse one or more digits, and then read
 the resulting string. We can use the combinator `many1` to help with
@@ -95,10 +92,10 @@ for a common choice: identifiers must start with a letter or
 underscore, and then they can be followed by zero or more letters,
 underscores or digits in any combination.
 
-> varExamples :: [(String,String)]
-> varExamples = [("test", "test")
->               ,("_stuff", "_stuff")
->               ,("_1234", "_1234")]
+> varExamples :: [(String, Either ParseError String)]
+> varExamples = [("test", Right "test")
+>               ,("_stuff", Right "_stuff")
+>               ,("_1234", Right "_1234")]
 
 > var :: Parser String
 > var = do
@@ -126,9 +123,9 @@ parentheses. First it will just parse integers inside parentheses.
 > data Parentheses = Parentheses Integer
 >                    deriving (Eq,Show)
 >
-> parensExamples :: [(String, Parentheses)]
-> parensExamples = [("(1)", Parentheses 1)
->                  ,("(17)", Parentheses 17)]
+> parensExamples :: [(String, Either ParseError Parentheses)]
+> parensExamples = [("(1)", Right $ Parentheses 1)
+>                  ,("(17)", Right $ Parentheses 17)]
 
 > parens :: Parser Parentheses
 > parens = do
@@ -203,9 +200,9 @@ and b are numbers.
 > data SingleAdd = SingleAdd Integer Integer
 >                  deriving (Eq,Show)
 >
-> singleAddExamples :: [(String, SingleAdd)]
-> singleAddExamples = [("1+2", SingleAdd 1 2)
->                     ,("101+202", SingleAdd 101 202)]
+> singleAddExamples :: [(String, Either ParseError SingleAdd)]
+> singleAddExamples = [("1+2", Right (SingleAdd 1 2))
+>                     ,("101+202", Right (SingleAdd 101 202))]
 
 > add :: Parser SingleAdd
 > add = do
@@ -362,15 +359,15 @@ expressions.
 
 It's so simple that it is almost useless at the moment.
 
-> simpleExprExamples :: [(String,SimpleExpr)]
+> simpleExprExamples :: [(String,Either ParseError SimpleExpr)]
 > simpleExprExamples =
->     [("a", Var "a")
->     ,("1", Num 1)
->     ,("2 + 3", Add (Num 2) (Num 3))
->     ,("(42)", Parens (Num 42))
->     ,("1+a", Add (Num 1) (Var "a"))
->     ,("1 + 2 + (3)", Add (Add (Num 1) (Num 2)) (Parens (Num 3)))
->     ,("(x+(y+1)+(a+4)", Add (Add (Var "x") (Parens (Add (Var "y") (Num 1)))) (Parens (Add (Var "a") (Num 4))))]
+>     [("a", Right (Var "a"))
+>     ,("1", Right (Num 1))
+>     ,("2 + 3", Right (Add (Num 2) (Num 3)))
+>     ,("(42)", Right (Parens (Num 42)))
+>     ,("1+a", Right (Add (Num 1) (Var "a")))
+>     ,("1 + 2 + (3)", Right (Add (Add (Num 1) (Num 2)) (Parens (Num 3))))
+>     ,("(x+(y+1)+(a+4))", Right (Parens (Add (Add (Var "x") (Parens (Add (Var "y") (Num 1)))) (Parens (Add (Var "a") (Num 4))))))]
 
 Here are all our component parsers with `lexeme`, and with the
 `SimpleExpr` constructors:
@@ -780,9 +777,62 @@ parsing code.
 
 == Testing with the examples
 
-TODO: write a little manual tester that accepts a parser and a list of
-examples, and checks they all parse correctly.
+> quickcheck :: (Eq a, Show a) => (Parser a -> String -> Either ParseError a) -> (Parser a) -> [(String, Either ParseError a)] -> IO ()
+> quickcheck parser grammar examples = mapM_ (checkparse parser grammar) examples
 
+> checkparse :: (Eq a, Show a) => (Parser a -> String -> Either ParseError a) -> (Parser a) -> (String, Either ParseError a) -> IO ()
+> checkparse parser grammar (str, ast) = do 
+>    print ("Parsing expression: \"" ++ str ++ "\"")
+>    let parse = parser grammar str
+>    if parse == ast
+>    then print ( str ++ " parsed to: " ++ show parse ) 
+>    else print (str ++ "  parsed to: " ++ show parse ++ "when it should have parsed to: " ++ show ast)
+>    return ()
+
+```
+*Main> quickcheck regularParse num1 numberExamples
+"Parsing expression: 1"
+"1 parsed to: Right 1"
+"Parsing expression: 23"
+"23 parsed to: Right 23"
+
+*Main> quickcheck regularParse var varExamples
+"Parsing expression: test"
+"test parsed to: Right \"test\""
+"Parsing expression: _stuff"
+"_stuff parsed to: Right \"_stuff\""
+"Parsing expression: _1234"
+"_1234 parsed to: Right \"_1234\""
+
+
+*Main> quickcheck regularParse parens parensExamples
+"Parsing expression: (1)"
+"(1) parsed to: Right (Parentheses 1)"
+"Parsing expression: (17)"
+"(17) parsed to: Right (Parentheses 17)"
+
+*Main> quickcheck regularParse add singleAddExamples
+"Parsing expression: 1+2"
+"1+2 parsed to: Right (SingleAdd 1 2)"
+"Parsing expression: 101+202"
+"101+202 parsed to: Right (SingleAdd 101 202)"
+
+*Main> quickcheck regularParse simpleExpr8 simpleExprExamples
+"Parsing expression: a"
+"a parsed to: Right (Var \"a\")"
+"Parsing expression: 1"
+"1 parsed to: Right (Num 1)"
+"Parsing expression: 2 + 3"
+"2 + 3 parsed to: Right (Add (Num 2) (Num 3))"
+"Parsing expression: (42)"
+"(42) parsed to: Right (Parens (Num 42))"
+"Parsing expression: 1+a"
+"1+a parsed to: Right (Add (Num 1) (Var \"a\"))"
+"Parsing expression: 1 + 2 + (3)"
+"1 + 2 + (3) parsed to: Right (Add (Add (Num 1) (Num 2)) (Parens (Num 3)))"
+"Parsing expression: (x+(y+1)+(a+4)"
+"(x+(y+1)+(a+4)  parsed to: Left (line 1, column 15):\nunexpected end of input\nexpecting \"+\" or \")\"when it should have parsed to: Right (Add (Add (Var \"x\") (Parens (Add (Var \"y\") (
+```
 == Testing with quickcheck
 
 Let's see if we can check with quickcheck. It's a bit tricky testing
